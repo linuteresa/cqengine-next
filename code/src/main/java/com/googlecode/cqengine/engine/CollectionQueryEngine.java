@@ -1,12 +1,12 @@
 /**
  * Copyright 2012-2015 Niall Gallagher
- *
+
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- *
+
  *    http://www.apache.org/licenses/LICENSE-2.0
- *
+
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -182,29 +182,10 @@ public class CollectionQueryEngine<O> implements QueryEngineInternal<O> {
     // indexes
     // and we determine which one has the lowest retrieval cost...
 
-    int lowestRetrievalCost = 0;
-    // Examine other (non-unique) indexes...
+    // Examine other (non-unique) indexes and choose the one with the lowest retrieval cost...
     Iterable<Index<O>> indexesOnAttribute =
         indexManager.getIndexesOnAttribute(query.getAttribute());
-
-    // Choose the index with the lowest retrieval cost for this query...
-    for (Index<O> index : indexesOnAttribute) {
-      if (index.supportsQuery(query, queryOptions)) {
-        ResultSet<O> thisIndexResultSet = index.retrieve(query, queryOptions);
-        int thisIndexRetrievalCost = thisIndexResultSet.getRetrievalCost();
-        if (lowestCostResultSet == null || thisIndexRetrievalCost < lowestRetrievalCost) {
-          lowestCostResultSet = thisIndexResultSet;
-          lowestRetrievalCost = thisIndexRetrievalCost;
-        }
-      }
-    }
-
-    if (lowestCostResultSet == null) {
-      // This should never happen (would indicate a bug);
-      // the fallback index should have been selected in worst case...
-      throw new IllegalStateException("Failed to locate an index supporting query: " + query);
-    }
-    return new CostCachingResultSet<O>(lowestCostResultSet);
+    return retrieveFromLowestCostIndex(query, indexesOnAttribute, queryOptions);
   }
 
   /**
@@ -220,14 +201,29 @@ public class CollectionQueryEngine<O> implements QueryEngineInternal<O> {
    */
   <A> ResultSet<O> retrieveComparativeQuery(
       ComparativeQuery<O, A> query, QueryOptions queryOptions) {
-    // Determine which of the indexes on the query's attribute have the lowest retrieval cost...
-    int lowestRetrievalCost = 0;
-    ResultSet<O> lowestCostResultSet = null;
-
+    // Determine which of the indexes on the query's attribute has the lowest retrieval cost...
     Iterable<Index<O>> indexesOnAttribute =
         indexManager.getIndexesOnAttribute(query.getAttribute());
+    return retrieveFromLowestCostIndex(query, indexesOnAttribute, queryOptions);
+  }
 
-    // Choose the index with the lowest retrieval cost for this query...
+  /**
+   * Chooses the index with the lowest retrieval cost from the given candidate indexes, and wraps its
+   * results in a {@link CostCachingResultSet}.
+   *
+   * <p>For a definition of retrieval cost see {@link ResultSet#getRetrievalCost()}.
+   *
+   * @param query The query for which an index is required
+   * @param indexesOnAttribute The candidate indexes on the query's attribute
+   * @param queryOptions Optional parameters for the query
+   * @return A {@link ResultSet} from the index with the lowest retrieval cost which supports the
+   *     given query
+   * @throws IllegalStateException if none of the given indexes supports the query
+   */
+  ResultSet<O> retrieveFromLowestCostIndex(
+      Query<O> query, Iterable<Index<O>> indexesOnAttribute, QueryOptions queryOptions) {
+    int lowestRetrievalCost = 0;
+    ResultSet<O> lowestCostResultSet = null;
     for (Index<O> index : indexesOnAttribute) {
       if (index.supportsQuery(query, queryOptions)) {
         ResultSet<O> thisIndexResultSet = index.retrieve(query, queryOptions);
@@ -1125,11 +1121,7 @@ public class CollectionQueryEngine<O> implements QueryEngineInternal<O> {
       ResultSet<O> resultSet = retrieveSimpleQuery(queryTyped, queryOptions);
       resultSets.add(resultSet);
     }
-    @SuppressWarnings("unchecked")
-    Collection<Query<O>> queriesTyped =
-        (Collection<Query<O>>) (Collection<? extends Query<O>>) queries;
-    Query<O> query =
-        queriesTyped.size() == 1 ? queriesTyped.iterator().next() : new And<O>(queriesTyped);
+    Query<O> query = combineQueries(queries, false);
 
     boolean useIndexMergeStrategy =
         indexMergeStrategyEnabled && indexesAvailableForAllResultSets(resultSets);
@@ -1150,11 +1142,7 @@ public class CollectionQueryEngine<O> implements QueryEngineInternal<O> {
       ResultSet<O> resultSet = retrieveComparativeQuery(queryTyped, queryOptions);
       resultSets.add(resultSet);
     }
-    @SuppressWarnings("unchecked")
-    Collection<Query<O>> queriesTyped =
-        (Collection<Query<O>>) (Collection<? extends Query<O>>) queries;
-    Query<O> query =
-        queriesTyped.size() == 1 ? queriesTyped.iterator().next() : new And<O>(queriesTyped);
+    Query<O> query = combineQueries(queries, false);
 
     // We always use index merge strategy to merge results for comparative queries...
     return new ResultSetIntersection<O>(resultSets, query, queryOptions, true);
@@ -1208,11 +1196,7 @@ public class CollectionQueryEngine<O> implements QueryEngineInternal<O> {
             };
           }
         };
-    @SuppressWarnings("unchecked")
-    Collection<Query<O>> queriesTyped =
-        (Collection<Query<O>>) (Collection<? extends Query<O>>) queries;
-    Query<O> query =
-        queriesTyped.size() == 1 ? queriesTyped.iterator().next() : new Or<O>(queriesTyped);
+    Query<O> query = combineQueries(queries, true);
     // Perform deduplication as necessary...
     if (DeduplicationOption.isLogicalElimination(queryOptions)) {
       // Use the index merge strategy if it was requested and indexes are available for all result
@@ -1252,11 +1236,7 @@ public class CollectionQueryEngine<O> implements QueryEngineInternal<O> {
             };
           }
         };
-    @SuppressWarnings("unchecked")
-    Collection<Query<O>> queriesTyped =
-        (Collection<Query<O>>) (Collection<? extends Query<O>>) queries;
-    Query<O> query =
-        queriesTyped.size() == 1 ? queriesTyped.iterator().next() : new Or<O>(queriesTyped);
+    Query<O> query = combineQueries(queries, true);
     // Perform deduplication as necessary...
     if (DeduplicationOption.isLogicalElimination(queryOptions)) {
       // Note: we always use the index merge strategy to merge results for comparative queries...
@@ -1264,6 +1244,24 @@ public class CollectionQueryEngine<O> implements QueryEngineInternal<O> {
     } else {
       return new ResultSetUnionAll<O>(resultSetsToUnion, query, queryOptions);
     }
+  }
+
+  /**
+   * Combines the given queries into a single query, working around type erasure. Returns the sole
+   * query if the collection contains only one; otherwise wraps them all in an {@link Or} (if {@code
+   * disjunctive}) or an {@link And} (if not).
+   *
+   * @param queries The queries to combine
+   * @param disjunctive True to combine with {@link Or}, false to combine with {@link And}
+   * @return A single query representing the combination of the given queries
+   */
+  @SuppressWarnings("unchecked")
+  Query<O> combineQueries(Collection<? extends Query<O>> queries, boolean disjunctive) {
+    Collection<Query<O>> queriesTyped = (Collection<Query<O>>) queries;
+    if (queriesTyped.size() == 1) {
+      return queriesTyped.iterator().next();
+    }
+    return disjunctive ? new Or<O>(queriesTyped) : new And<O>(queriesTyped);
   }
 
   /**
