@@ -1,3 +1,16 @@
+/**
+ * Copyright 2012-2015 Niall Gallagher
+ *
+ * <p>Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file
+ * except in compliance with the License. You may obtain a copy of the License at
+ *
+ * <p>http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * <p>Unless required by applicable law or agreed to in writing, software distributed under the
+ * License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either
+ * express or implied. See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 package com.googlecode.cqengine.engine;
 
 import com.googlecode.cqengine.attribute.Attribute;
@@ -51,26 +64,28 @@ class IndexManager<O> {
   }
 
   public void addIndex(Index<O> index, QueryOptions queryOptions) {
-      switch (index) {
-          case StandingQueryIndex<O> standingQueryIndex -> addStandingQueryIndex(
-                  standingQueryIndex, standingQueryIndex.getStandingQuery(), queryOptions);
-          case CompoundIndex<O> compoundIndex -> {
-              CompoundAttribute<O> compoundAttribute = compoundIndex.getAttribute();
-              addCompoundIndex(compoundIndex, compoundAttribute, queryOptions);
-          }
-          case AttributeIndex<?, O> attributeIndex -> {
-              Attribute<O, ?> indexedAttribute = attributeIndex.getAttribute();
-              if (indexedAttribute instanceof StandingQueryAttribute standingQueryAttribute) {
-                  @SuppressWarnings("unchecked")
-                  Query<O> standingQuery = (Query<O>) standingQueryAttribute.getQuery();
-                  addStandingQueryIndex(index, standingQuery, queryOptions);
-              } else {
-                  addAttributeIndex(attributeIndex, queryOptions);
-              }
-          }
-          case null, default -> throw new IllegalStateException(
-                  "Unexpected type of index: " + (index == null ? null : index.getClass().getName()));
+    switch (index) {
+      case StandingQueryIndex<O> standingQueryIndex ->
+          addStandingQueryIndex(
+              standingQueryIndex, standingQueryIndex.getStandingQuery(), queryOptions);
+      case CompoundIndex<O> compoundIndex -> {
+        CompoundAttribute<O> compoundAttribute = compoundIndex.getAttribute();
+        addCompoundIndex(compoundIndex, compoundAttribute, queryOptions);
       }
+      case AttributeIndex<?, O> attributeIndex -> {
+        Attribute<O, ?> indexedAttribute = attributeIndex.getAttribute();
+        if (indexedAttribute instanceof StandingQueryAttribute standingQueryAttribute) {
+          @SuppressWarnings("unchecked")
+          Query<O> standingQuery = (Query<O>) standingQueryAttribute.getQuery();
+          addStandingQueryIndex(index, standingQuery, queryOptions);
+        } else {
+          addAttributeIndex(attributeIndex, queryOptions);
+        }
+      }
+      case null, default ->
+          throw new IllegalStateException(
+              "Unexpected type of index: " + (index == null ? null : index.getClass().getName()));
+    }
     if (!index.isMutable()) {
       immutableIndexes.add(index);
     }
@@ -85,8 +100,10 @@ class IndexManager<O> {
   private <A> void addAttributeIndex(
       AttributeIndex<A, O> attributeIndex, QueryOptions queryOptions) {
     Attribute<O, A> attribute = attributeIndex.getAttribute();
-    Set<Index<O>> indexesOnThisAttribute = attributeIndexes.computeIfAbsent(attribute, k -> Collections.newSetFromMap(new ConcurrentHashMap<Index<O>, Boolean>()));
-      if (attributeIndex instanceof SimplifiedSQLiteIndex) {
+    Set<Index<O>> indexesOnThisAttribute =
+        attributeIndexes.computeIfAbsent(
+            attribute, k -> Collections.newSetFromMap(new ConcurrentHashMap<Index<O>, Boolean>()));
+    if (attributeIndex instanceof SimplifiedSQLiteIndex) {
       // Ensure there is not already an identity index added for this attribute...
       for (Index<O> existingIndex : indexesOnThisAttribute) {
         if (existingIndex instanceof IdentityAttributeIndex) {
@@ -160,42 +177,45 @@ class IndexManager<O> {
    */
   public void removeIndex(Index<O> index, QueryOptions queryOptions) {
     boolean removed;
-      switch (index) {
-          case StandingQueryIndex<O> standingQueryIndex -> removed =
-                  standingQueryIndexes.remove(standingQueryIndex.getStandingQuery(), standingQueryIndex);
-          case CompoundIndex<O> compoundIndex -> {
-              CompoundAttribute<O> compoundAttribute = compoundIndex.getAttribute();
+    switch (index) {
+      case StandingQueryIndex<O> standingQueryIndex ->
+          removed =
+              standingQueryIndexes.remove(
+                  standingQueryIndex.getStandingQuery(), standingQueryIndex);
+      case CompoundIndex<O> compoundIndex -> {
+        CompoundAttribute<O> compoundAttribute = compoundIndex.getAttribute();
 
-              removed = compoundIndexes.remove(compoundAttribute, compoundIndex);
-          }
-          case AttributeIndex<?, O> attributeIndex -> {
-              Attribute<O, ?> indexedAttribute = attributeIndex.getAttribute();
-
-              if (indexedAttribute instanceof StandingQueryAttribute standingQueryAttribute) {
-                  @SuppressWarnings("unchecked")
-                  Query<O> standingQuery = (Query<O>) standingQueryAttribute.getQuery();
-
-                  removed = standingQueryIndexes.remove(standingQuery, index);
-              } else {
-                  Set<Index<O>> indexesOnThisAttribute = attributeIndexes.get(indexedAttribute);
-
-                  removed = indexesOnThisAttribute.remove(attributeIndex);
-
-                  if (attributeIndex instanceof UniqueIndex) {
-                      // Remove from UniqueIndexes as well...
-                      removed = uniqueIndexes.remove(indexedAttribute, attributeIndex) || removed;
-                  }
-
-                  if (indexesOnThisAttribute.isEmpty()) {
-                      // If there are no more indexes left on this attribute,
-                      // remove the Set which was used to store indexes on the attribute also...
-                      attributeIndexes.remove(indexedAttribute);
-                  }
-              }
-          }
-          case null, default -> throw new IllegalStateException(
-                  "Unexpected type of index: " + (index == null ? null : index.getClass().getName()));
+        removed = compoundIndexes.remove(compoundAttribute, compoundIndex);
       }
+      case AttributeIndex<?, O> attributeIndex -> {
+        Attribute<O, ?> indexedAttribute = attributeIndex.getAttribute();
+
+        if (indexedAttribute instanceof StandingQueryAttribute standingQueryAttribute) {
+          @SuppressWarnings("unchecked")
+          Query<O> standingQuery = (Query<O>) standingQueryAttribute.getQuery();
+
+          removed = standingQueryIndexes.remove(standingQuery, index);
+        } else {
+          Set<Index<O>> indexesOnThisAttribute = attributeIndexes.get(indexedAttribute);
+
+          removed = indexesOnThisAttribute.remove(attributeIndex);
+
+          if (attributeIndex instanceof UniqueIndex) {
+            // Remove from UniqueIndexes as well...
+            removed = uniqueIndexes.remove(indexedAttribute, attributeIndex) || removed;
+          }
+
+          if (indexesOnThisAttribute.isEmpty()) {
+            // If there are no more indexes left on this attribute,
+            // remove the Set which was used to store indexes on the attribute also...
+            attributeIndexes.remove(indexedAttribute);
+          }
+        }
+      }
+      case null, default ->
+          throw new IllegalStateException(
+              "Unexpected type of index: " + (index == null ? null : index.getClass().getName()));
+    }
     if (removed && !index.isMutable()) {
       // Remove from the set of immutable indexes; this is used by ensureMutable() and the
       // isMutable() method...
@@ -215,14 +235,15 @@ class IndexManager<O> {
    * @return All indexes which have been added to this manager
    */
   public Iterable<Index<O>> getIndexes() {
-      List<Index<O>> indexes = new ArrayList<Index<O>>();
-      for (Set<Index<O>> attributeIndexes : this.attributeIndexes.values()) {
-          indexes.addAll(attributeIndexes);
-      }
-      indexes.addAll(this.compoundIndexes.values());
-      indexes.addAll(this.standingQueryIndexes.values());
-      return indexes;
+    List<Index<O>> indexes = new ArrayList<Index<O>>();
+    for (Set<Index<O>> attributeIndexes : this.attributeIndexes.values()) {
+      indexes.addAll(attributeIndexes);
+    }
+    indexes.addAll(this.compoundIndexes.values());
+    indexes.addAll(this.standingQueryIndexes.values());
+    return indexes;
   }
+
   /**
    * Returns an {@link Iterable} over all indexes which have been added on the given attribute,
    * including the {@link FallbackIndex} which is implicitly available on all attributes.
@@ -253,25 +274,26 @@ class IndexManager<O> {
    * @return The entire collection wrapped as a {@link ResultSet}, with retrieval cost {@link
    *     Integer#MAX_VALUE}
    */
-  ResultSet<O> getEntireCollectionAsResultSet(final Query<O> query, final QueryOptions queryOptions) {
-      return new ObjectStoreResultSet<O>(objectStore, query, queryOptions, Integer.MAX_VALUE) {
-          // Override getMergeCost() to avoid calling size(),
-          // which may be expensive for custom implementations of lazy backing sets...
-          @Override
-          public int getMergeCost() {
-              return Integer.MAX_VALUE;
-          }
+  ResultSet<O> getEntireCollectionAsResultSet(
+      final Query<O> query, final QueryOptions queryOptions) {
+    return new ObjectStoreResultSet<O>(objectStore, query, queryOptions, Integer.MAX_VALUE) {
+      // Override getMergeCost() to avoid calling size(),
+      // which may be expensive for custom implementations of lazy backing sets...
+      @Override
+      public int getMergeCost() {
+        return Integer.MAX_VALUE;
+      }
 
-          @Override
-          public Query<O> getQuery() {
-              return query;
-          }
+      @Override
+      public Query<O> getQuery() {
+        return query;
+      }
 
-          @Override
-          public QueryOptions getQueryOptions() {
-              return queryOptions;
-          }
-      };
+      @Override
+      public QueryOptions getQueryOptions() {
+        return queryOptions;
+      }
+    };
   }
 
   /** Returns the {@link UniqueIndex} registered on the given attribute, or {@code null} if none. */
