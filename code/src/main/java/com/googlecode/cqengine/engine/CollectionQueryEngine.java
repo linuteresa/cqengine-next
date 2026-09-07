@@ -66,6 +66,9 @@ public class CollectionQueryEngine<O> implements QueryEngineInternal<O> {
       addIndex(backingIndex, queryOptions);
     }
 
+    forEachIndexDo(
+        new IndexOperation<O>() {
+          @Override
           public boolean perform(Index<O> index) {
             queryOptions.put(QueryEngine.class, CollectionQueryEngine.this);
             queryOptions.put(Persistence.class, persistence);

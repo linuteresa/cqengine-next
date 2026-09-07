@@ -331,7 +331,11 @@ class QueryOptimizer<O> {
                   indexMergeStrategyEnabled, or.hasComparativeQueries(), resultSetsToUnion);
       ResultSet<O> union =
           resultSetBuilder.union(
-              resultSetsToUnion, query, queryOptions, logicalElimination, useIndexMergeStrategy);
+              resultSetsToUnion,
+              query,
+              queryOptionsForOrUnion,
+              logicalElimination,
+              useIndexMergeStrategy);
 
       if (union.getRetrievalCost() == Integer.MAX_VALUE && !or.hasComparativeQueries()) {
         // Either no indexes are available for any branches of the or() query, or indexes are only
@@ -350,7 +354,9 @@ class QueryOptimizer<O> {
         // Note: there is no need to deduplicate results which were fetched this way.
         union =
             resultSetBuilder.filteredCollectionScan(
-                indexManager.getEntireCollectionAsResultSet(query, queryOptions), or, queryOptions);
+                indexManager.getEntireCollectionAsResultSet(query, queryOptionsForOrUnion),
+                or,
+                queryOptionsForOrUnion);
       }
       return union;
     } else if (query instanceof Not<O> not) {
